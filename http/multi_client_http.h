@@ -26,7 +26,7 @@ typedef http::response<http::string_body> StrResponse;
 struct HttpReqArgument
 {
     string host;
-    uint16_t port;
+    string port;
     int dns_timeout = 5;
     int conn_timeout = 3;
     int req_timeout = 6;
@@ -45,10 +45,10 @@ public:
     ~MultiClientHttp();
 
     //http请求
-    StrResponse h1_req(const StrRequest &req, HttpReqArgument args) noexcept;
+    StrResponse h1_req(const StrRequest &req, const HttpReqArgument& args) noexcept;
 
     //https请求
-    StrResponse h1_req(const StrRequest &req, HttpsReqArgument args) noexcept;
+    StrResponse h1_req(const StrRequest &req, const HttpsReqArgument& args) noexcept;
 
     //双向确认 没有实现
 
@@ -62,11 +62,6 @@ protected:
     typedef boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_context_work;
     std::unique_ptr<io_context_work> m_work;
     std::vector<std::thread> m_threads;
-
-    size_t m_timeout = 3000;
-    size_t m_timeout_connect = 2000;
-
-    
 
     boost::fibers::condition_variable_any m_stop_cnd;
     boost::fibers::mutex m_stop_mux;
