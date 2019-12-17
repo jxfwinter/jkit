@@ -181,18 +181,10 @@ void HttpApiServer::accept()
     boost::system::error_code ec;
     for (;;)
     {
-        TcpSocket socket(m_io_cxt.get_executor());
-        f = m_acceptor.async_accept(m_io_cxt.get_executor(),
-                                    boost::asio::fibers::use_future([&socket](const boost::system::error_code &ec, boost::asio::ip::tcp::socket peer) mutable {
-                                        socket = std::move(peer);
-                                        return ec;
-                                    }));
-
-        // f = m_acceptor.async_accept<tcp, tcp::socket::executor_type>(socket,
-        //                                                              boost::asio::fibers::use_future([](const boost::system::error_code &ec) {
-        //                                                                  return ec;
-        //                                                              }));
-
+        TcpSocket socket(m_io_cxt);
+        f = m_acceptor.async_accept(socket,  boost::asio::fibers::use_future([](const boost::system::error_code &ec) {
+            return ec;
+        }));
         ec = f.get();
         if (ec)
         {
@@ -231,7 +223,7 @@ void HttpApiServer::accept()
                     m_session_cnd.notify_one();
                 }
             })
-                .detach();
+                    .detach();
 
             std::lock_guard<boost::fibers::mutex> lk(m_session_mutex);
             ++m_session_number;
@@ -292,8 +284,8 @@ void HttpApiServer::handle_request(HttpContext &cxt)
 
     // Request path must be absolute and not contain "..".
     if (req.target().empty() ||
-        req.target()[0] != '/' ||
-        req.target().find("..") != boost::beast::string_view::npos)
+            req.target()[0] != '/' ||
+            req.target().find("..") != boost::beast::string_view::npos)
     {
         m_bad_resource(cxt, "path must be absolute and not contain \"..\"");
         return;
