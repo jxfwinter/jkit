@@ -10,6 +10,8 @@ common/fiber/wait_stuff.hpp
 common/logger.cpp
 common/logger.h
 common/web_utility.hpp
+db/json2sql.cpp
+db/json2sql.h
 db/soci_pgsql.hpp
 examples/http/client_main.cpp
 examples/http/server_main.cpp
