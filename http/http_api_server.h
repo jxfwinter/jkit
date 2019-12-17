@@ -4,7 +4,6 @@
 #include <boost/beast.hpp>
 #include <boost/regex.hpp>
 #include <boost/asio.hpp>
-#include <boost/any.hpp>
 #include <boost/fiber/all.hpp>
 
 #include <chrono>
@@ -16,21 +15,31 @@
 #include <cctype>
 #include <string>
 #include <memory>
-#include <sstream>
+#include <atomic>
 #include <thread>
 #include <functional>
 
-#include "common/fiber/use_fiber_future.hpp"
+#include "fiber/use_fiber_future.hpp"
 #include "logger.h"
 #include "web_utility.hpp"
 
-using tcp = boost::asio::ip::tcp; // from <boost/asio/ip/tcp.hpp>
-using namespace boost::beast;
-using namespace std;
-using boost::asio::ip::tcp;
+namespace http = boost::beast::http;
+namespace asio = boost::asio;
+
+typedef boost::asio::io_context IoContext;
+typedef boost::asio::ip::tcp::acceptor Acceptor;
+typedef boost::asio::ip::tcp::endpoint Endpoint;
+typedef boost::asio::ip::tcp::socket TcpSocket;
+typedef boost::asio::executor_work_guard<boost::asio::io_context::executor_type> IoContextWork;
+
+typedef boost::system::error_code BSError;
 
 typedef http::request<http::string_body> StrRequest;
 typedef http::response<http::string_body> StrResponse;
+typedef int socket_type;
+
+using std::string;
+using boost::beast::tcp_stream;
 
 struct HttpContext
 {
@@ -46,7 +55,7 @@ struct HttpContext
 class HttpApiServer
 {
 public:
-    HttpApiServer(int thread_count, string listen_address, int listen_port);
+    HttpApiServer(int thread_count, const std::string &listen_address, uint16_t listen_port);
     virtual ~HttpApiServer();
 
     void start();
@@ -77,7 +86,7 @@ protected:
     typedef std::function<void(HttpContext &)> ResourceCall;
     std::map<RegexOrderable, std::map<http::verb, ResourceCall>> m_resource;
     ResourceCall m_default_resource;
-    ResourceCall m_bad_resource;
+    std::function<void(HttpContext &, const string &)> m_bad_resource;
 
     uint16_t m_timeout = 0;
     uint64_t m_body_limit = 0;
@@ -96,17 +105,16 @@ private:
 private:
     int m_thread_count = 1;
     boost::asio::io_context m_io_cxt;
-    typedef boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_context_work;
-    std::unique_ptr<io_context_work> m_work;
-    tcp::acceptor m_acceptor;
+    std::unique_ptr<IoContextWork> m_work;
+    Acceptor m_acceptor;
     std::vector<std::thread> m_threads;
 
     boost::fibers::fiber m_accept_fiber;
-    tcp::endpoint m_listen_ep;
+    Endpoint m_listen_ep;
     boost::fibers::mutex m_session_mutex;
     int m_session_number = 0;
     boost::fibers::condition_variable_any m_session_cnd;
-    atomic_bool m_running;
+    std::atomic_bool m_running;
 };
 
 #endif

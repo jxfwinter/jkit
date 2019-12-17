@@ -1,17 +1,4 @@
 #include "multi_client_http.h"
-#include <boost/date_time/posix_time/posix_time.hpp>
-#include <boost/fiber/all.hpp>
-
-#include "common/fiber/use_fiber_future.hpp"
-
-using tcp = boost::asio::ip::tcp; // from <boost/asio/ip/tcp.hpp>
-using namespace boost::beast;     // from <boost/beast/http.hpp>
-using boost::posix_time::ptime;
-namespace ssl = boost::asio::ssl;
-
-typedef boost::asio::ip::tcp::resolver::results_type ResolverResult;
-typedef boost::asio::ip::tcp::endpoint Endpoint;
-typedef boost::system::error_code BSError;
 
 namespace
 {
@@ -23,7 +10,7 @@ struct Connection
 
 struct HttpConnection : public HttpReqArgument, public Connection
 {
-    HttpConnection(boost::asio::io_context &ioc) : stream(ioc) {}
+    HttpConnection(IoContext &ioc) : stream(ioc) {}
     tcp_stream stream;
 };
 
@@ -31,7 +18,7 @@ typedef std::shared_ptr<HttpConnection> HttpConnectionPtr;
 
 struct HttpsConnection : public HttpsReqArgument, public Connection
 {
-    HttpsConnection(boost::asio::io_context &ioc) : stream(ioc) {}
+    HttpsConnection(IoContext &ioc, SslContext& cxt) : stream(ioc, cxt) {}
     ssl::stream<tcp_stream> stream;
 };
 
@@ -40,8 +27,31 @@ typedef std::shared_ptr<HttpsConnection> HttpsConnectionPtr;
 class HttpCache
 {
 public:
-    HttpConnectionPtr get_http_connect(const HttpReqArgument &args, boost::asio::io_context &io_cxt) noexcept
+
+    HttpCache(int thread_count = 1) : m_thread_count(thread_count), m_work(new IoContextWork(m_io_cxt.get_executor()))
     {
+        for (int i = 0; i < m_thread_count; ++i)
+        {
+            std::thread t([this]() {
+                m_io_cxt.run();
+            });
+            m_threads.push_back(std::move(t));
+        }
+    }
+
+    ~HttpCache()
+    {
+        m_io_cxt.stop();
+        for (int i = 0; i < m_thread_count; ++i)
+        {
+            m_threads[i].join();
+        }
+    }
+
+
+    HttpConnectionPtr get_http_connect(const HttpReqArgument &args) noexcept
+    {
+        delete_timeout_http_connect();
         {
             std::lock_guard<boost::fibers::mutex> lk{m_http_mutex};
             for (auto it = m_cache_http_conns.begin(); it != m_cache_http_conns.end(); ++it)
@@ -59,7 +69,7 @@ public:
             }
         }
 
-        HttpConnectionPtr conn_ptr(new HttpConnection(io_cxt));
+        HttpConnectionPtr conn_ptr(new HttpConnection(m_io_cxt));
         HttpConnection &conn = *conn_ptr;
 
         conn.host = args.host;
@@ -70,7 +80,7 @@ public:
 
         //dns查询
         ResolverResult rr;
-        if (!resolve(conn.host, conn.port, conn.dns_timeout, rr, io_cxt))
+        if (!resolve(conn.host, conn.port, conn.dns_timeout, rr))
         {
             return nullptr;
         }
@@ -122,14 +132,15 @@ public:
         }
     }
 
-    HttpsConnectionPtr get_https_connect(const HttpsReqArgument &args, boost::asio::io_context &io_cxt) noexcept
+    HttpsConnectionPtr get_https_connect(const HttpsReqArgument &args) noexcept
     {
+        delete_timeout_https_connect();
         {
             std::lock_guard<boost::fibers::mutex> lk{m_https_mutex};
             for (auto it = m_cache_https_streams.begin(); it != m_cache_https_streams.end(); ++it)
             {
                 HttpsConnectionPtr &ptr = *it;
-                if (!ptr->in_use && ptr->host == host && ptr->port == port)
+                if (!ptr->in_use && ptr->host == args.host && ptr->port == args.port)
                 {
                     ptr->dns_timeout = args.dns_timeout;
                     ptr->conn_timeout = args.conn_timeout;
@@ -143,7 +154,13 @@ public:
             }
         }
 
-        HttpsConnectionPtr conn_ptr(new HttpsConnection(io_cxt));
+        ssl::context ssl_ctx{boost::asio::ssl::context::method::tls_client};
+        if (!set_ssl(ssl_ctx, args.ssl_cert))
+        {
+            return nullptr;
+        }
+
+        HttpsConnectionPtr conn_ptr(new HttpsConnection(m_io_cxt, ssl_ctx));
         HttpsConnection &conn = *conn_ptr;
 
         conn.host = args.host;
@@ -154,15 +171,9 @@ public:
         conn.handshake_timeout = args.handshake_timeout;
         conn.ssl_cert = args.ssl_cert;
 
-        ssl::context ctx{boost::asio::ssl::context::method::tls_client};
-        if (!set_ssl(ctx, conn.ssl_cert))
-        {
-            return nullptr;
-        }
-
         //dns查询
         ResolverResult rr;
-        if (!resolve(conn.host, conn.port, conn.dns_timeout, rr, io_cxt))
+        if (!resolve(conn.host, conn.port, conn.dns_timeout, rr))
         {
             return nullptr;
         }
@@ -184,10 +195,10 @@ public:
         //handshake
         boost::fibers::future<BSError> f;
         BSError ec;
-        stream.expires_after(std::chrono::seconds(conn.handshake_timeout));
+        stream.next_layer().expires_after(std::chrono::seconds(conn.handshake_timeout));
         f = stream.async_handshake(ssl::stream_base::client, boost::asio::fibers::use_future([](const BSError &ec) {
-                                       return ec;
-                                   }));
+            return ec;
+        }));
         ec = f.get();
         if (ec)
         {
@@ -213,7 +224,7 @@ public:
             HttpsConnectionPtr &ptr = *it;
             if (ptr.get() == stream_ptr.get())
             {
-                ptr->stream.expires_never();
+                ptr->stream.next_layer().expires_never();
                 ptr->in_use = false;
                 ptr->last_use = boost::posix_time::second_clock::local_time();
                 return;
@@ -290,17 +301,17 @@ public:
     }
 
 private:
-    bool resolve(const string &host, const string &port, int timeout, ResolverResult &rr, boost::asio::io_context &io_cxt) noexcept
+    bool resolve(const string &host, const string &port, int timeout, ResolverResult &rr) noexcept
     {
         boost::fibers::future<BSError> f;
         BSError ec;
         boost::fibers::future_status fs;
 
-        tcp::resolver resolver(io_cxt);
+        Resolver resolver(m_io_cxt);
         f = resolver.async_resolve(host, port, boost::asio::fibers::use_future([&rr](const BSError &ec, ResolverResult results) {
-                                       rr = std::move(results);
-                                       return ec;
-                                   }));
+            rr = std::move(results);
+            return ec;
+        }));
         fs = f.wait_for(std::chrono::seconds(timeout));
         if (fs == boost::fibers::future_status::timeout)
         {
@@ -354,6 +365,11 @@ private:
     }
 
 private:
+    int m_thread_count = 1;
+    IoContext m_io_cxt;
+    std::unique_ptr<IoContextWork> m_work;
+    std::vector<std::thread> m_threads;
+
     boost::fibers::mutex m_http_mutex;
     list<HttpConnectionPtr> m_cache_http_conns;
 
@@ -365,63 +381,19 @@ private:
 
 } //namespace
 
-static HttpCache cache;
+static HttpCache* cache = nullptr;
 
-MultiClientHttp::MultiClientHttp(int thread_count) : m_thread_count(thread_count), m_work(new io_context_work(m_io_cxt.get_executor()))
+void MultiClientHttp::init()
 {
-    boost::fibers::fiber f([this]() {
-        while (1)
-        {
-            cache.delete_timeout_http_connect();
-            cache.delete_timeout_https_connect();
-            bool stop = false;
-            {
-                std::unique_lock<boost::fibers::mutex> lk(m_stop_mux);
-                stop = m_stop_cnd.wait_for(lk, std::chrono::seconds(30), [this]() {
-                    return !m_running;
-                });
-            }
-            if (stop)
-            {
-                break;
-            }
-        }
-    });
-
-    m_timer_fiber.swap(f);
-
-    for (int i = 0; i < m_thread_count; ++i)
+    if(!cache)
     {
-        std::thread t([this]() {
-            m_io_cxt.run();
-        });
-        m_threads.push_back(std::move(t));
-    }
-}
-
-MultiClientHttp::~MultiClientHttp()
-{
-    {
-        std::unique_lock<boost::fibers::mutex> lk(m_stop_mux);
-        m_running = false;
-        m_stop_cnd.notify_all();
-    }
-
-    m_io_cxt.stop();
-    for (int i = 0; i < m_thread_count; ++i)
-    {
-        m_threads[i].join();
-    }
-
-    if (m_timer_fiber.joinable())
-    {
-        m_timer_fiber.join();
+        cache = new HttpCache();
     }
 }
 
 StrResponse MultiClientHttp::h1_req(const StrRequest &req, const HttpReqArgument &args) noexcept
 {
-    HttpConnectionPtr conn_ptr = cache.get_http_connect(args, m_io_cxt);
+    HttpConnectionPtr conn_ptr = cache->get_http_connect(args);
     if (!conn_ptr)
     {
         StrResponse res;
@@ -434,8 +406,8 @@ StrResponse MultiClientHttp::h1_req(const StrRequest &req, const HttpReqArgument
     stream.expires_after(std::chrono::seconds(args.req_timeout));
     //发送请求
     f = http::async_write(stream, req, boost::asio::fibers::use_future([](const BSError &ec, size_t) {
-                              return ec;
-                          }));
+        return ec;
+    }));
     ec = f.get();
     if (ec)
     {
@@ -450,15 +422,15 @@ StrResponse MultiClientHttp::h1_req(const StrRequest &req, const HttpReqArgument
             res.result(http::status::connection_closed_without_response);
         }
 
-        cache.delete_invalid_http_connect(conn_ptr);
+        cache->delete_invalid_http_connect(conn_ptr);
         return std::move(res);
     }
     //返回响应
     boost::beast::flat_buffer b;
     StrResponse res;
     f = http::async_read(stream, b, res, boost::asio::fibers::use_future([](const BSError &ec, size_t) {
-                             return ec;
-                         }));
+        return ec;
+    }));
     ec = f.get();
     if (ec)
     {
@@ -472,7 +444,7 @@ StrResponse MultiClientHttp::h1_req(const StrRequest &req, const HttpReqArgument
         {
             res.result(http::status::connection_closed_without_response);
         }
-        cache.delete_invalid_http_connect(conn_ptr);
+        cache->delete_invalid_http_connect(conn_ptr);
         return std::move(res);
     }
 
@@ -481,18 +453,18 @@ StrResponse MultiClientHttp::h1_req(const StrRequest &req, const HttpReqArgument
         //boost::system::error_code ec;
         //socket.shutdown(tcp::socket::shutdown_both, ec);
         stream.close();
-        cache.delete_invalid_http_connect(conn_ptr);
+        cache->delete_invalid_http_connect(conn_ptr);
     }
     else
     {
-        cache.release_http_connect(conn_ptr);
+        cache->release_http_connect(conn_ptr);
     }
     return std::move(res);
 }
 
 StrResponse MultiClientHttp::h1_req(const StrRequest &req, const HttpsReqArgument &args) noexcept
 {
-    HttpsConnectionPtr conn_ptr = cache.get_https_connect(args, m_io_cxt);
+    HttpsConnectionPtr conn_ptr = cache->get_https_connect(args);
     if (!conn_ptr)
     {
         StrResponse res;
@@ -502,11 +474,11 @@ StrResponse MultiClientHttp::h1_req(const StrRequest &req, const HttpsReqArgumen
     ssl::stream<tcp_stream> &stream = conn_ptr->stream;
     boost::fibers::future<BSError> f;
     BSError ec;
-    stream.expires_after(std::chrono::seconds(args.req_timeout));
+    stream.next_layer().expires_after(std::chrono::seconds(args.req_timeout));
     //发送请求
     f = http::async_write(stream, req, boost::asio::fibers::use_future([](const BSError &ec, size_t) {
-                              return ec;
-                          }));
+        return ec;
+    }));
     ec = f.get();
     if (ec)
     {
@@ -520,15 +492,15 @@ StrResponse MultiClientHttp::h1_req(const StrRequest &req, const HttpsReqArgumen
         {
             res.result(http::status::connection_closed_without_response);
         }
-        cache.delete_invalid_https_connect(conn_ptr);
+        cache->delete_invalid_https_connect(conn_ptr);
         return std::move(res);
     }
     //返回响应
     boost::beast::flat_buffer b;
     StrResponse res;
     f = http::async_read(stream, b, res, boost::asio::fibers::use_future([](const BSError &ec, size_t) {
-                             return ec;
-                         }));
+        return ec;
+    }));
     ec = f.get();
     if (ec)
     {
@@ -542,14 +514,14 @@ StrResponse MultiClientHttp::h1_req(const StrRequest &req, const HttpsReqArgumen
         {
             res.result(http::status::connection_closed_without_response);
         }
-        cache.delete_invalid_https_connect(conn_ptr);
+        cache->delete_invalid_https_connect(conn_ptr);
         return std::move(res);
     }
     if (res.need_eof())
     {
         f = stream.async_shutdown(boost::asio::fibers::use_future([](boost::system::error_code ec) {
-            return ec;
-        }));
+                                      return ec;
+                                  }));
         ec = f.get();
         if (ec == boost::asio::error::eof)
         {
@@ -557,10 +529,11 @@ StrResponse MultiClientHttp::h1_req(const StrRequest &req, const HttpsReqArgumen
             // http://stackoverflow.com/questions/25587403/boost-asio-ssl-async-shutdown-always-finishes-with-an-error
             ec.assign(0, ec.category());
         }
-        cache.delete_invalid_https_connect(conn_ptr);
+        cache->delete_invalid_https_connect(conn_ptr);
     }
     else
     {
-        cache.release_https_connect(conn_ptr);
+        cache->release_https_connect(conn_ptr);
     }
+    return std::move(res);
 }

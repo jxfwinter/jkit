@@ -1,7 +1,5 @@
 #include "http_api_server.h"
-#include <iostream>
 
-typedef int socket_type;
 namespace
 {
 // 设置心跳
@@ -43,26 +41,28 @@ void set_close_on_exec(socket_type s)
 }
 } // namespace
 
-HttpApiServer::HttpApiServer(int thread_count, string listen_address, int listen_port) : m_thread_count(thread_count), m_work(new io_context_work(m_io_cxt.get_executor())), m_acceptor(m_io_cxt)
+HttpApiServer::HttpApiServer(int thread_count, const string& listen_address, uint16_t listen_port) :
+    m_thread_count(thread_count), m_work(new IoContextWork(m_io_cxt.get_executor())), m_acceptor(m_io_cxt)
 {
-    m_listen_ep = tcp::endpoint{boost::asio::ip::address::from_string(listen_address), (uint16_t)listen_port};
+    m_listen_ep = Endpoint{boost::asio::ip::address::from_string(listen_address), listen_port};
     m_default_resource = [](HttpContext &cxt) {
         cxt.res.result(http::status::not_found);
         cxt.res.version(cxt.req.version());
         cxt.res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
         cxt.res.set(http::field::content_type, "text/html");
-        cxt.cxt.res.keep_alive(cxt.req.keep_alive());
-        cxt.res.body() = "The '" + cxt.req.method_string() + "' resource '" + cxt.path + "' was not found.";
+        cxt.res.keep_alive(false);
+        cxt.res.body() = "The '" + cxt.req.method_string().to_string() + "' resource '" + cxt.path + "' was not found.";
         cxt.res.prepare_payload();
     };
 
     m_bad_resource = [](HttpContext &cxt, const string &why) {
-        http::response<http::string_body> res{http::status::bad_request, req.version()};
-        res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
-        res.set(http::field::content_type, "text/html");
-        res.keep_alive(cxt.req.keep_alive());
-        res.body() = why;
-        res.prepare_payload();
+        cxt.res.result(http::status::bad_request);
+        cxt.res.version(cxt.req.version());
+        cxt.res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
+        cxt.res.set(http::field::content_type, "text/html");
+        cxt.res.keep_alive(false);
+        cxt.res.body() = why;
+        cxt.res.prepare_payload();
     };
 }
 
@@ -98,7 +98,7 @@ void HttpApiServer::session(tcp_stream &stream)
         http::request_parser<http::string_body> parser;
         if (m_body_limit > 0)
         {
-            parser.m_body_limit(m_body_limit);
+            parser.body_limit(m_body_limit);
         }
 
         f = http::async_read_header(stream, buffer, parser, boost::asio::fibers::use_future([](boost::system::error_code ec, size_t n) -> boost::system::error_code {
@@ -161,15 +161,11 @@ void HttpApiServer::session(tcp_stream &stream)
         }
         if (close)
         {
-            // This means we should close the connection, usually because
-            // the response indicated the "Connection: close" semantic.
             break;
         }
     }
 
-    // Send a TCP shutdown
-    stream.socket().shutdown(tcp::socket::shutdown_both, ec);
-    // At this point the connection is closed gracefully
+    stream.close();
 }
 
 void HttpApiServer::accept()
@@ -185,7 +181,7 @@ void HttpApiServer::accept()
     boost::system::error_code ec;
     for (;;)
     {
-        tcp::socket socket(m_io_cxt.get_executor());
+        TcpSocket socket(m_io_cxt.get_executor());
         f = m_acceptor.async_accept(m_io_cxt.get_executor(),
                                     boost::asio::fibers::use_future([&socket](const boost::system::error_code &ec, boost::asio::ip::tcp::socket peer) mutable {
                                         socket = std::move(peer);
@@ -212,8 +208,7 @@ void HttpApiServer::accept()
             }
             else
             {
-                LogErrorExt << ec.message() << "\nstack:\n"
-                           << boost::stacktrace::stacktrace(0, 8);
+                LogErrorExt << ec.message();
                 throw boost::system::system_error(ec);
             }
         }
@@ -320,11 +315,6 @@ void HttpApiServer::handle_request(HttpContext &cxt)
             m_default_resource(cxt);
             return;
         }
-        else
-        {
-            
-        }
-        
     }
     catch (std::exception &e)
     {

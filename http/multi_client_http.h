@@ -3,6 +3,7 @@
 
 #include <string>
 #include <thread>
+#include <mutex>
 #include <list>
 #include <map>
 #include <memory>
@@ -14,11 +15,33 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
-#include "logger.h"
+#include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/fiber/all.hpp>
 
+#include "logger.h"
+#include "fiber/use_fiber_future.hpp"
+
+namespace http = boost::beast::http;
+namespace ssl = boost::asio::ssl;
+namespace asio = boost::asio;
+
+using boost::posix_time::ptime;
+using boost::beast::tcp_stream;
 using std::string;
 using std::list;
 using std::map;
+
+typedef boost::asio::io_context IoContext;
+typedef boost::asio::ip::tcp::acceptor Acceptor;
+typedef boost::asio::ip::tcp::endpoint Endpoint;
+typedef boost::asio::ip::tcp::socket TcpSocket;
+typedef boost::asio::ip::tcp::resolver Resolver;
+typedef boost::asio::ip::tcp::resolver::results_type ResolverResult;
+typedef boost::asio::executor_work_guard<boost::asio::io_context::executor_type> IoContextWork;
+typedef boost::asio::ssl::context SslContext;
+
+typedef boost::system::error_code BSError;
+
 
 typedef http::request<http::string_body> StrRequest;
 typedef http::response<http::string_body> StrResponse;
@@ -30,43 +53,31 @@ struct HttpReqArgument
     int dns_timeout = 5;
     int conn_timeout = 3;
     int req_timeout = 6;
-}
+};
 
 struct HttpsReqArgument : public HttpReqArgument
 {
     int handshake_timeout = 3;
     string ssl_cert; //如果为空,表示不确认
-}
+};
 
 class MultiClientHttp
 {
 public:
-    MultiClientHttp(int thread_count = 1);
-    ~MultiClientHttp();
+    //必须先初始化
+    static void init();
 
     //http请求
-    StrResponse h1_req(const StrRequest &req, const HttpReqArgument& args) noexcept;
+    static StrResponse h1_req(const StrRequest &req, const HttpReqArgument& args) noexcept;
 
     //https请求
-    StrResponse h1_req(const StrRequest &req, const HttpsReqArgument& args) noexcept;
+    static StrResponse h1_req(const StrRequest &req, const HttpsReqArgument& args) noexcept;
 
     //双向确认 没有实现
 
 #ifdef USE_CLIENT_HTTP2
 
 #endif //USE_CLIENT_HTTP2
-
-protected:
-    int m_thread_count = 1;
-    boost::asio::io_context m_io_cxt;
-    typedef boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_context_work;
-    std::unique_ptr<io_context_work> m_work;
-    std::vector<std::thread> m_threads;
-
-    boost::fibers::condition_variable_any m_stop_cnd;
-    boost::fibers::mutex m_stop_mux;
-    boost::fibers::fiber m_timer_fiber;
-    bool m_running = true;
 };
 
 #endif /* MULTI_CLIENT_HTTP_HPP */
