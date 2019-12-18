@@ -122,6 +122,39 @@ string obj_to_update_sql_str(const json &obj, const map<string, string> &key_val
     return sql_text.str();
 }
 
+string obj_to_update_sql_str(const json &obj, const json& key_value_wheres, const string &tbl_name)
+{
+    if (obj.empty())
+    {
+        return "";
+    }
+    ostringstream sql_text;
+    sql_text << "update " << tbl_name << " set ";
+    auto last = obj.end();
+    --last;
+    for (auto it = obj.begin(); it != obj.end(); ++it)
+    {
+        sql_text << it.key() << "=" << value_to_sql_str(it.value());
+        if (it != last)
+        {
+            sql_text << ",";
+        }
+    }
+    sql_text << " where ";
+
+    auto last_where = key_value_wheres.end();
+    --last_where;
+    for (auto it = key_value_wheres.begin(); it != key_value_wheres.end(); ++it)
+    {
+        sql_text << it.key() << "=" << value_to_sql_str(it.value());
+        if (it != last_where)
+        {
+            sql_text << " and ";
+        }
+    }
+    return sql_text.str();
+}
+
 string obj_to_insert_sql_str(const json &obj, const string &tbl_name)
 {
     if (obj.empty())

@@ -71,8 +71,8 @@ string comma_arr_to_sql_in_arr(const string &str, bool is_text);
 
 //构造update sql语句
 /*
- *  根据key_where字段名值value_where作为条件,构建update语句
- *  key_value_wheres 表示有多个条件,以 and连接
+ *  根据key_where字段名值value_where作为条件,构建update语句,条件值为字符串类型,构造的sql语句中会有单引号
+ *  key_value_wheres 表示有多个条件,以 and连接,条件值为字符串类型,会被加引号,构造的sql语句中会有单引号
  *  obj为要更新的字段
  *
 */
@@ -80,6 +80,15 @@ string comma_arr_to_sql_in_arr(const string &str, bool is_text);
 string obj_to_update_sql_str(const json &obj, const string &key_where, const string &value_where, const string &tbl_name);
 
 string obj_to_update_sql_str(const json &obj, const map<string, string>& key_value_wheres, const string &tbl_name);
+
+//构造update sql语句
+/*
+ *  key_value_wheres 表示有多个条件的键值对,以 and连接,条件值为根据类型决定构造的sql语句中是否有单引号
+ *  obj为要更新的字段
+ *
+*/
+
+string obj_to_update_sql_str(const json &obj, const json& key_value_wheres, const string &tbl_name);
 
 //构造insert sql语句
 string obj_to_insert_sql_str(const json &obj, const string &tbl_name);
