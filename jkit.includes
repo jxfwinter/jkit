@@ -3,7 +3,7 @@ D:\msys64\usr\lib\gcc\x86_64-pc-msys\7.4.0\include\c++
 common
 common/fiber
 http
-third/include
+third_party/include
 examples/http
 .
 db

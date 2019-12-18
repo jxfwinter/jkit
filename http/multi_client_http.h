@@ -18,6 +18,10 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/fiber/all.hpp>
 
+#ifdef USE_CLIENT_HTTP2
+#include "nghttp2/asio_http2_client.h"
+#endif
+
 #include "logger.h"
 #include "fiber/use_fiber_future.hpp"
 
@@ -76,7 +80,7 @@ public:
     //双向确认 没有实现
 
 #ifdef USE_CLIENT_HTTP2
-
+    static StrResponse h2_req(const StrRequest &req, const HttpsReqArgument& args) noexcept;
 #endif //USE_CLIENT_HTTP2
 };
 
