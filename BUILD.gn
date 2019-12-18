@@ -7,7 +7,7 @@ config("myconfig") {
         "./http",
         "./common",
         "./common/fiber",
-        "./third/include",
+        "./third_party/include",
     ]
    
     cflags_cc = ["-std=c++17"]
