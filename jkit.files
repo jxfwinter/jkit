@@ -13,9 +13,10 @@ common/web_utility.hpp
 db/json2sql.cpp
 db/json2sql.h
 db/soci_pgsql.hpp
+examples/http/client2_main.cpp
 examples/http/client_main.cpp
+examples/http/server2_main.cpp
 examples/http/server_main.cpp
-examples/http/test_api.hpp
 http/http_api_server.cpp
 http/http_api_server.h
 http/multi_client_http.cpp

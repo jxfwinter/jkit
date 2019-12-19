@@ -42,9 +42,34 @@ executable("http_test_server") {
         "./common/logger.cpp",
         "./http/http_api_server.cpp",
         "./examples/http/server_main.cpp",
-        "./examples/http/test_api.hpp",
     ]
 
     libs = ["boost_log","boost_fiber", "boost_filesystem", "boost_context", "boost_log_setup", "boost_thread", "boost_date_time", "boost_regex"]
     libs += ["ssl", "pthread", "crypto"]
+}
+
+if(has_http2) {
+    executable("http2_test_client") {
+        configs -= [ "//build/config:c++11" ]
+        configs += [ ":myconfig" ]
+        sources = [
+            "./common/logger.cpp",
+            "./http/multi_client_http.cpp",
+            "./examples/http/client2_main.cpp",
+        ]
+
+        libs = ["boost_log","boost_fiber", "boost_filesystem", "boost_context", "boost_log_setup", "boost_thread", "boost_date_time"]
+        libs += ["ssl", "pthread", "crypto"]
+    }
+
+    executable("http2_test_server") {
+        configs -= [ "//build/config:c++11" ]
+        configs += [ ":myconfig" ]
+        sources = [
+            "./examples/http/server2_main.cpp",
+        ]
+
+        libs = []
+        libs += ["ssl", "pthread", "crypto"]
+    }
 }
