@@ -3,8 +3,8 @@
 
 #include <nghttp2/asio_http2_server.h>
 
-#include "json.hpp"
-using nlohmann::json;
+#include <boost/json.hpp>
+namespace json = boost::json;
 using std::cout;
 using std::endl;
 using std::string;
@@ -43,9 +43,9 @@ int main() {
                              {"field2", {"value2"}}
                           }
                           );
-            json body;
+            json::object body;
             body["error_code"] = 0;
-            res.end(body.dump());
+            res.end(json::serialize(body));
         });
 
         boost::asio::ssl::context tls(boost::asio::ssl::context::sslv23);

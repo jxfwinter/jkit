@@ -4,10 +4,10 @@
 #include <string>
 #include <vector>
 #include <map>
-#include "json.hpp"
+#include <boost/json.hpp>
 #include <boost/algorithm/string.hpp>
 
-using nlohmann::json;
+namespace json = boost::json;
 using std::string;
 using std::vector;
 using std::map;
@@ -15,41 +15,14 @@ using std::map;
 namespace JsonSql
 {
 //from_arr数组中每个obj的key的值, 如果在in_arr中所有obj中key的值集合中不存在,就放入返回数组中
-template <typename T>
-json select_not_in_array(const json& from_arr, const json& in_arr, const string& key)
-{
-    json res = json::array();
-    auto it = from_arr.begin();
-    for(; it!= from_arr.end(); ++it)
-    {
-        const json& from_value = it.value();
-        const T& from_v = from_value.at(key);
-        bool find = false;
-        auto it_in = in_arr.begin();
-        for(; it_in!= in_arr.end(); ++it_in)
-        {
-            const json& in_value = it_in.value();
-            const T& in_v = in_value.at(key);
-            if(from_v == in_v)
-            {
-                find = true;
-                break;
-            }
-        }
-        if(!find)
-        {
-            res.push_back(from_v);
-        }
-    }
-    return std::move(res);
-}
+json::array select_not_in_array(const json::array& from_arr, const json::array& in_arr, const string& key);
 
 //json value生成sql值
 /*
  * "aaa" 输出  'aaa'
  * 4 输出 4
 */
-string value_to_sql_str(const json &value);
+string value_to_sql_str(const json::value &v);
 
 //json数组转为 in 需要的 数组字符串
 /*
@@ -58,7 +31,7 @@ string value_to_sql_str(const json &value);
  *
  *
 */
-string arr_to_sql_in_arr(const json &array);
+string arr_to_sql_in_arr(const json::array &v);
 
 //字符串根据is_text转为 sql中 所需要的in 需要的 数组
 /*
@@ -77,9 +50,9 @@ string comma_arr_to_sql_in_arr(const string &str, bool is_text);
  *
 */
 
-string obj_to_update_sql_str(const json &obj, const string &key_where, const string &value_where, const string &tbl_name);
+string obj_to_update_sql_str(const json::object &obj, const string &key_where, const string &value_where, const string &tbl_name);
 
-string obj_to_update_sql_str(const json &obj, const map<string, string>& key_value_wheres, const string &tbl_name);
+string obj_to_update_sql_str(const json::object &obj, const map<string, string>& key_value_wheres, const string &tbl_name);
 
 //构造update sql语句
 /*
@@ -88,32 +61,32 @@ string obj_to_update_sql_str(const json &obj, const map<string, string>& key_val
  *
 */
 
-string obj_to_update_sql_str(const json &obj, const json& key_value_wheres, const string &tbl_name);
+string obj_to_update_sql_str(const json::object &obj, const json::object& key_value_wheres, const string &tbl_name);
 
 //构造insert sql语句
-string obj_to_insert_sql_str(const json &obj, const string &tbl_name);
+string obj_to_insert_sql_str(const json::object &obj, const string &tbl_name);
 
 //构造conflict sql语句,如果冲突则更新
 //key_where1 key_where2为冲突字段组合
-string obj_to_upsert_update_sql_str(const json &obj, const string &key_where1,
+string obj_to_upsert_update_sql_str(const json::object &obj, const string &key_where1,
                                const string &key_where2, const string& except_key, const string &tbl_name);
 
 //构造conflict sql语句,如果冲突则更新
 //key_where1 key_where2 key_where3为冲突字段组合
-string obj_to_upsert_update_sql_str(const json &obj, const string &key_where1,
+string obj_to_upsert_update_sql_str(const json::object &obj, const string &key_where1,
                                const string &key_where2, const string &key_where3, const string& except_key, const string &tbl_name);
 
 //构造conflict sql语句,如果冲突则更新
 //key_wheres为冲突字段组合
-string obj_to_upsert_update_sql_str(const json &obj, const vector<string> &key_wheres, const string& except_key, const string &tbl_name);
+string obj_to_upsert_update_sql_str(const json::object &obj, const vector<string> &key_wheres, const string& except_key, const string &tbl_name);
 
 
 //构造conflict sql语句,如果冲突,不更新
 //key_wheres为冲突字段组合
-string obj_to_upsert_nothing_sql_str(const json &obj, const vector<string> &key_wheres, const string &tbl_name);
+string obj_to_upsert_nothing_sql_str(const json::object &obj, const vector<string> &key_wheres, const string &tbl_name);
 
 //将obj中的key value赋值给assgin_json, 如果obj中存在
-void assign_json_value(json& assgin_json, const json& obj, const vector<string>& keys);
+void assign_json_value(json::object& assgin_json, const json::object& obj, const vector<string>& keys);
 }
 
 #endif //JSON2SQL_H

@@ -86,7 +86,6 @@ void HttpApiServer::session(tcp_stream &stream)
         return;
     }
 
-    boost::fibers::future<boost::system::error_code> f;
     while (m_running)
     {
         if (0 != m_timeout)
@@ -101,11 +100,7 @@ void HttpApiServer::session(tcp_stream &stream)
             parser.body_limit(m_body_limit);
         }
 
-        f = http::async_read_header(stream, buffer, parser, boost::asio::fibers::use_future([](boost::system::error_code ec, size_t n) -> boost::system::error_code {
-                                        return ec;
-                                    }));
-
-        ec = f.get();
+        http::async_read_header(stream, buffer, parser, boost::fibers::asio::yield[ec]);
         if (ec == http::error::end_of_stream)
         {
             break;
@@ -123,10 +118,7 @@ void HttpApiServer::session(tcp_stream &stream)
             continue_res.result(http::status::continue_);
             continue_res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
             LogDebug << continue_res;
-            f = http::async_write(stream, continue_res, boost::asio::fibers::use_future([](boost::system::error_code ec, size_t n) {
-                                      return ec;
-                                  }));
-            ec = f.get();
+            http::async_write(stream, continue_res, boost::fibers::asio::yield[ec]);
             if (ec)
             {
                 LogErrorExt << ec.message();
@@ -134,10 +126,7 @@ void HttpApiServer::session(tcp_stream &stream)
             }
         }
 
-        f = http::async_read(stream, buffer, parser, boost::asio::fibers::use_future([](boost::system::error_code ec, size_t n) -> boost::system::error_code {
-                                 return ec;
-                             }));
-        ec = f.get();
+        http::async_read(stream, buffer, parser, boost::fibers::asio::yield[ec]);
         if (ec)
         {
             LogErrorExt << ec.message();
@@ -150,10 +139,7 @@ void HttpApiServer::session(tcp_stream &stream)
         last_process(cxt);
         LogDebug << "res:" << cxt.res;
         close = cxt.res.need_eof();
-        f = http::async_write(stream, cxt.res, boost::asio::fibers::use_future([](boost::system::error_code ec, size_t n) {
-                                  return ec;
-                              }));
-        ec = f.get();
+        http::async_write(stream, cxt.res, boost::fibers::asio::yield[ec]);
         if (ec)
         {
             LogErrorExt << ec.message();
@@ -177,15 +163,11 @@ void HttpApiServer::accept()
 
     //启用close-on-exec机制
     set_close_on_exec(m_acceptor.native_handle());
-    boost::fibers::future<boost::system::error_code> f;
     boost::system::error_code ec;
     for (;;)
     {
         TcpSocket socket(m_io_cxt);
-        f = m_acceptor.async_accept(socket,  boost::asio::fibers::use_future([](const boost::system::error_code &ec) {
-            return ec;
-        }));
-        ec = f.get();
+        m_acceptor.async_accept(socket, boost::fibers::asio::yield[ec]);
         if (ec)
         {
             if (ec.value() == boost::asio::error::no_descriptors)

@@ -45,27 +45,20 @@ FiberFrameContext FiberFrameContext::m_cxt;
 
 void FiberFrameContext::init()
 {
-    if(run_thread_count < 2)
-    {
-        boost::fibers::use_scheduling_algorithm<boost::fibers::algo::round_robin>();
-    }
-    else
-    {
-        auto thread_fun = [this](){
-            boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(run_thread_count, true);
-            //检查结束条件
-            {
-                std::unique_lock<std::mutex> lk(m_mtx);
-                m_cnd_stop.wait(lk, [this]() { return !m_running; } );
-            }
-        };
-
-        for(int i=1; i<run_thread_count; ++i)
+    auto thread_fun = [this](){
+        boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(run_thread_count, true);
+        //检查结束条件
         {
-            m_threads.push_back(std::thread(thread_fun));
+            std::unique_lock<std::mutex> lk(m_mtx);
+            m_cnd_stop.wait(lk, [this]() { return !m_running; } );
         }
-        boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(run_thread_count, true);       
+    };
+
+    for(int i=1; i<run_thread_count; ++i)
+    {
+        m_threads.push_back(std::thread(thread_fun));
     }
+    boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(run_thread_count, true);
 }
 
 void FiberFrameContext::notify_stop()

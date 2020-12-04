@@ -23,7 +23,7 @@
 #endif
 
 #include "logger.h"
-#include "fiber/use_fiber_future.hpp"
+#include "fiber/yield.hpp"
 
 namespace http = boost::beast::http;
 namespace ssl = boost::asio::ssl;

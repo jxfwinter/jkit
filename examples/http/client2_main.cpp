@@ -5,10 +5,9 @@
 #include <string>
 #include <mutex>
 #include <atomic>
-#include "json.hpp"
+
 using std::cout;
 using std::endl;
-using nlohmann::json;
 
 string g_host = "127.0.0.1";
 string g_port = "28080";

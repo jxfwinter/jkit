@@ -1,7 +1,6 @@
 #ifndef SOCI_PGSQL_H
 #define SOCI_PGSQL_H
 
-#include "json.hpp"
 #include <ctime>
 #include <atomic>
 #include <memory>
@@ -11,6 +10,7 @@
 #include <soci/postgresql/soci-postgresql.h>
 #include <soci/callbacks.h>
 
+#include <boost/json.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <boost/date_time.hpp>
 #include <boost/uuid/uuid_generators.hpp>
@@ -20,7 +20,7 @@
 #include "logger.h"
 #include <boost/log/attributes.hpp>
 
-using namespace nlohmann;
+namespace json = boost::json;
 using namespace std;
 using namespace boost::posix_time;
 using namespace boost::uuids;
@@ -82,11 +82,11 @@ struct type_conversion<ptime>
 };
 
 template <>
-struct type_conversion<json>
+struct type_conversion<json::value>
 {
     typedef std::string base_type;
 
-    static void from_base(const std::string &i, indicator ind, json &mi)
+    static void from_base(const std::string &i, indicator ind, json::value &mi)
     {
         if (ind == i_null)
         {
@@ -96,7 +96,7 @@ struct type_conversion<json>
         mi = json::parse(i);
     }
 
-    static void to_base(const json &mi, std::string &i, indicator &ind)
+    static void to_base(const json::value &mi, std::string &i, indicator &ind)
     {
         if(mi.is_null())
         {
@@ -104,7 +104,7 @@ struct type_conversion<json>
         }
         else
         {
-            i = mi.dump();
+            i = json::serialize(mi);
             ind = i_ok;
         }
     }

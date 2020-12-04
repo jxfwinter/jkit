@@ -1,9 +1,9 @@
 #include "fiber_frame_context.hpp"
 
-#include "json.hpp"
+#include <boost/json.hpp>
 #include "http_api_server.h"
 
-using nlohmann::json;
+namespace json = boost::json;
 class TestApi : public HttpApiServer
 {
 public:
@@ -11,9 +11,9 @@ public:
         HttpApiServer(3, listen_address, listen_port)
     {
         m_resource["^/test_api$"][http::verb::get] = [this](HttpContext& cxt) {
-            json res;
+            json::object res;
             res["error_code"] = 0;
-            cxt.res.body() = res.dump();
+            cxt.res.body() = json::serialize(res);
         };
     }
 };

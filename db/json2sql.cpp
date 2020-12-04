@@ -1,45 +1,79 @@
 #include "json2sql.h"
+#include <sstream>
+
+using std::ostringstream;
 
 namespace JsonSql
 {
+json::array select_not_in_array(const json::array& from_arr, const json::array& in_arr, const string& key)
+{
+    json::array res;;
+    auto it = from_arr.begin();
+    for(; it!= from_arr.end(); ++it)
+    {
+        const json::object& from_value = it->as_object();
+        const json::value* from_v = from_value.if_contains(key);
+        if(!from_v)
+            continue;
+        bool find = false;
+        auto it_in = in_arr.begin();
+        for(; it_in!= in_arr.end(); ++it_in)
+        {
+            const json::object& in_value = it_in->as_object();
+            const json::value* in_v = in_value.if_contains(key);
+            if(!in_v)
+                continue;
+            if(*from_v == *in_v)
+            {
+                find = true;
+                break;
+            }
+        }
+        if(!find)
+        {
+            res.push_back(*from_v);
+        }
+    }
+    return std::move(res);
+}
 
-string value_to_sql_str(const json &value)
+string value_to_sql_str(const json::value &v)
 {
     ostringstream os;
-    if (value.is_null())
+    if (v.is_null())
     {
         os << "null";
     }
-    else if (value.is_number() || value.is_boolean() || value.is_null())
+    else if (v.is_number() || v.is_bool())
     {
-        os << value.dump();
+        os << json::serialize(v);
     }
-    else if (value.is_string())
+    else if (v.is_string())
     {
-        os << "'" << value.get<string>() << "'";
+        os << "'" << json::serialize(v) << "'";
     }
-    else if (value.is_array())
+    else if (v.is_array())
     {
-        string tmp = value.dump();
+        string tmp = json::serialize(v);
         tmp[0] = '{';
         tmp[tmp.size() - 1] = '}'; //[  ]换成大括号
         os << "'" << tmp << "'";
     }
-    else if (value.is_structured())
+    else if (v.is_structured())
     {
-        os << "'" << value << "'";
+        os << "'" << json::serialize(v) << "'";
     }
     else
     {
-        os << value.dump();
+        os << json::serialize(v);
     }
     return os.str();
 }
 
-string arr_to_sql_in_arr(const json &array)
+string arr_to_sql_in_arr(const json::array &v)
 {
     ostringstream os;
-    os << array.dump(); //输出 [1, 3, 4]
+    os << json::serialize(v); //输出 [1, 3, 4]
     string str = os.str();
     str[0] = '(';
     str[str.size() - 1] = ')'; //[  ]换成sql 小括号
@@ -63,7 +97,7 @@ string comma_arr_to_sql_in_arr(const string &str, bool is_text)
     return in_arr;
 }
 
-string obj_to_update_sql_str(const json &obj, const string &key_where, const string &value_where, const string &tbl_name)
+string obj_to_update_sql_str(const json::object &obj, const string &key_where, const string &value_where, const string &tbl_name)
 {
     if (obj.empty())
     {
@@ -78,7 +112,7 @@ string obj_to_update_sql_str(const json &obj, const string &key_where, const str
     {
         //if (it.key() != key_where)
         //{
-            sql_text << it.key() << "=" << value_to_sql_str(it.value());
+            sql_text << it->key() << "=" << value_to_sql_str(it->value());
             if (it != last)
             {
                 sql_text << ",";
@@ -89,7 +123,7 @@ string obj_to_update_sql_str(const json &obj, const string &key_where, const str
     return sql_text.str();
 }
 
-string obj_to_update_sql_str(const json &obj, const map<string, string> &key_value_wheres, const string &tbl_name)
+string obj_to_update_sql_str(const json::object &obj, const map<string, string> &key_value_wheres, const string &tbl_name)
 {
     if (obj.empty())
     {
@@ -101,7 +135,7 @@ string obj_to_update_sql_str(const json &obj, const map<string, string> &key_val
     --last;
     for (auto it = obj.begin(); it != obj.end(); ++it)
     {
-        sql_text << it.key() << "=" << value_to_sql_str(it.value());
+        sql_text << it->key() << "=" << value_to_sql_str(it->value());
         if (it != last)
         {
             sql_text << ",";
@@ -122,7 +156,7 @@ string obj_to_update_sql_str(const json &obj, const map<string, string> &key_val
     return sql_text.str();
 }
 
-string obj_to_update_sql_str(const json &obj, const json& key_value_wheres, const string &tbl_name)
+string obj_to_update_sql_str(const json::object &obj, const json::object &key_value_wheres, const string &tbl_name)
 {
     if (obj.empty())
     {
@@ -134,7 +168,7 @@ string obj_to_update_sql_str(const json &obj, const json& key_value_wheres, cons
     --last;
     for (auto it = obj.begin(); it != obj.end(); ++it)
     {
-        sql_text << it.key() << "=" << value_to_sql_str(it.value());
+        sql_text << it->key() << "=" << value_to_sql_str(it->value());
         if (it != last)
         {
             sql_text << ",";
@@ -146,7 +180,7 @@ string obj_to_update_sql_str(const json &obj, const json& key_value_wheres, cons
     --last_where;
     for (auto it = key_value_wheres.begin(); it != key_value_wheres.end(); ++it)
     {
-        sql_text << it.key() << "=" << value_to_sql_str(it.value());
+        sql_text << it->key() << "=" << value_to_sql_str(it->value());
         if (it != last_where)
         {
             sql_text << " and ";
@@ -155,7 +189,7 @@ string obj_to_update_sql_str(const json &obj, const json& key_value_wheres, cons
     return sql_text.str();
 }
 
-string obj_to_insert_sql_str(const json &obj, const string &tbl_name)
+string obj_to_insert_sql_str(const json::object &obj, const string &tbl_name)
 {
     if (obj.empty())
     {
@@ -169,7 +203,7 @@ string obj_to_insert_sql_str(const json &obj, const string &tbl_name)
 
     for (auto it = obj.begin(); it != obj.end(); ++it)
     {
-        sql_text << it.key();
+        sql_text << it->key();
         if (it != last)
         {
             sql_text << ",";
@@ -179,7 +213,7 @@ string obj_to_insert_sql_str(const json &obj, const string &tbl_name)
     sql_text << ") values(";
     for (auto it = obj.begin(); it != obj.end(); ++it)
     {
-        sql_text << value_to_sql_str(it.value());
+        sql_text << value_to_sql_str(it->value());
         if (it != last)
         {
             sql_text << ",";
@@ -189,7 +223,7 @@ string obj_to_insert_sql_str(const json &obj, const string &tbl_name)
     return sql_text.str();
 }
 
-string obj_to_upsert_update_sql_str(const json &obj, const string &key_where1,
+string obj_to_upsert_update_sql_str(const json::object &obj, const string &key_where1,
                                const string &key_where2, const string &except_key, const string &tbl_name)
 {
     if (obj.empty())
@@ -204,7 +238,7 @@ string obj_to_upsert_update_sql_str(const json &obj, const string &key_where1,
 
     for (auto it = obj.begin(); it != obj.end(); ++it)
     {
-        sql_text << it.key();
+        sql_text << it->key();
         if (it != last)
         {
             sql_text << ",";
@@ -214,14 +248,14 @@ string obj_to_upsert_update_sql_str(const json &obj, const string &key_where1,
     sql_text << ") values(";
     for (auto it = obj.begin(); it != obj.end(); ++it)
     {
-        sql_text << value_to_sql_str(it.value());
+        sql_text << value_to_sql_str(it->value());
         if (it != last)
         {
             sql_text << ",";
         }
     }
 
-    json obj_cp = obj;
+    json::object obj_cp = obj;
     obj_cp.erase(except_key);
     auto last_cp = obj_cp.end();
     --last_cp;
@@ -229,7 +263,7 @@ string obj_to_upsert_update_sql_str(const json &obj, const string &key_where1,
     sql_text << ") on conflict(" + key_where1 + "," + key_where2  + ") do update  set ";
     for(auto it = obj_cp.begin(); it != obj_cp.end(); ++it)
     {
-        sql_text << it.key() << "=EXCLUDED." << it.key();
+        sql_text << it->key() << "=EXCLUDED." << it->key();
         if (it != last_cp)
         {
             sql_text << ",";
@@ -239,7 +273,7 @@ string obj_to_upsert_update_sql_str(const json &obj, const string &key_where1,
     return sql_text.str();
 }
 
-string obj_to_upsert_update_sql_str(const json &obj, const string &key_where1,
+string obj_to_upsert_update_sql_str(const json::object &obj, const string &key_where1,
                                const string &key_where2, const string &key_where3, const string& except_key, const string &tbl_name)
 {
     if (obj.empty())
@@ -254,7 +288,7 @@ string obj_to_upsert_update_sql_str(const json &obj, const string &key_where1,
 
     for (auto it = obj.begin(); it != obj.end(); ++it)
     {
-        sql_text << it.key();
+        sql_text << it->key();
         if (it != last)
         {
             sql_text << ",";
@@ -264,13 +298,13 @@ string obj_to_upsert_update_sql_str(const json &obj, const string &key_where1,
     sql_text << ") values(";
     for (auto it = obj.begin(); it != obj.end(); ++it)
     {
-        sql_text << value_to_sql_str(it.value());
+        sql_text << value_to_sql_str(it->value());
         if (it != last)
         {
             sql_text << ",";
         }
     }
-    json obj_cp = obj;
+    json::object obj_cp = obj;
     obj_cp.erase(except_key);
     auto last_cp = obj_cp.end();
     --last_cp;
@@ -278,7 +312,7 @@ string obj_to_upsert_update_sql_str(const json &obj, const string &key_where1,
     sql_text << ") on conflict(" + key_where1 + "," + key_where2  + "," + key_where3 + ") do update  set ";
     for(auto it = obj_cp.begin(); it != obj_cp.end(); ++it)
     {
-        sql_text << it.key() << "=EXCLUDED." << it.key();
+        sql_text << it->key() << "=EXCLUDED." << it->key();
         if (it != last_cp)
         {
             sql_text << ",";
@@ -288,7 +322,7 @@ string obj_to_upsert_update_sql_str(const json &obj, const string &key_where1,
     return sql_text.str();
 }
 
-string obj_to_upsert_update_sql_str(const json &obj, const vector<string> &key_wheres, const string& except_key, const string &tbl_name)
+string obj_to_upsert_update_sql_str(const json::object &obj, const vector<string> &key_wheres, const string& except_key, const string &tbl_name)
 {
     if (obj.empty())
     {
@@ -302,7 +336,7 @@ string obj_to_upsert_update_sql_str(const json &obj, const vector<string> &key_w
 
     for (auto it = obj.begin(); it != obj.end(); ++it)
     {
-        sql_text << it.key();
+        sql_text << it->key();
         if (it != last)
         {
             sql_text << ",";
@@ -312,13 +346,13 @@ string obj_to_upsert_update_sql_str(const json &obj, const vector<string> &key_w
     sql_text << ") values(";
     for (auto it = obj.begin(); it != obj.end(); ++it)
     {
-        sql_text << value_to_sql_str(it.value());
+        sql_text << value_to_sql_str(it->value());
         if (it != last)
         {
             sql_text << ",";
         }
     }
-    json obj_cp = obj;
+    json::object obj_cp = obj;
     obj_cp.erase(except_key);
     auto last_cp = obj_cp.end();
     --last_cp;
@@ -338,7 +372,7 @@ string obj_to_upsert_update_sql_str(const json &obj, const vector<string> &key_w
     sql_text << ") on conflict(" + key_arr + ") do update set ";
     for(auto it = obj_cp.begin(); it != obj_cp.end(); ++it)
     {
-        sql_text << it.key() << "=EXCLUDED." << it.key();
+        sql_text << it->key() << "=EXCLUDED." << it->key();
         if (it != last_cp)
         {
             sql_text << ",";
@@ -348,7 +382,7 @@ string obj_to_upsert_update_sql_str(const json &obj, const vector<string> &key_w
     return sql_text.str();
 }
 
-string obj_to_upsert_nothing_sql_str(const json &obj, const vector<string> &key_wheres, const string &tbl_name)
+string obj_to_upsert_nothing_sql_str(const json::object &obj, const vector<string> &key_wheres, const string &tbl_name)
 {
     if (obj.empty())
     {
@@ -362,7 +396,7 @@ string obj_to_upsert_nothing_sql_str(const json &obj, const vector<string> &key_
 
     for (auto it = obj.begin(); it != obj.end(); ++it)
     {
-        sql_text << it.key();
+        sql_text << it->key();
         if (it != last)
         {
             sql_text << ",";
@@ -372,7 +406,7 @@ string obj_to_upsert_nothing_sql_str(const json &obj, const vector<string> &key_
     sql_text << ") values(";
     for (auto it = obj.begin(); it != obj.end(); ++it)
     {
-        sql_text << value_to_sql_str(it.value());
+        sql_text << value_to_sql_str(it->value());
         if (it != last)
         {
             sql_text << ",";
@@ -395,14 +429,14 @@ string obj_to_upsert_nothing_sql_str(const json &obj, const vector<string> &key_
     return sql_text.str();
 }
 
-void assign_json_value(json& assgin_json, const json& obj, const vector<string>& keys)
+void assign_json_value(json::object &assgin_json, const json::object &obj, const vector<string>& keys)
 {
     for(const string& key : keys)
     {
         auto it = obj.find(key);
         if(it != obj.end())
         {
-            assgin_json[key] = it.value();
+            assgin_json[key] = it->value();
         }
     }
 }

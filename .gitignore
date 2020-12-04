@@ -1,5 +1,6 @@
 /.vscode
 /bin
 /lib
+/lib_old
 /out
 *.creator.user

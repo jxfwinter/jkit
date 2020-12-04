@@ -272,13 +272,9 @@ HttpsConnectionPtr HttpCache::get_https_connect(const HttpsReqArgument &args) no
     }
 
     //handshake
-    boost::fibers::future<BSError> f;
     BSError ec;
     stream.next_layer().expires_after(std::chrono::seconds(conn.handshake_timeout));
-    f = stream.async_handshake(ssl::stream_base::client, boost::asio::fibers::use_future([](const BSError &ec) {
-        return ec;
-    }));
-    ec = f.get();
+    stream.async_handshake(ssl::stream_base::client, boost::fibers::asio::yield[ec]);
     if (ec)
     {
         LogErrorExt << ec.message();
@@ -465,22 +461,9 @@ void HttpCache::delete_timeout_http2s_connect() noexcept
 
 bool HttpCache::resolve(const string &host, const string &port, int timeout, ResolverResult &rr) noexcept
 {
-    boost::fibers::future<BSError> f;
     BSError ec;
-    boost::fibers::future_status fs;
-
     Resolver resolver(m_io_cxt);
-    f = resolver.async_resolve(host, port, boost::asio::fibers::use_future([&rr](const BSError &ec, ResolverResult results) {
-        rr = std::move(results);
-        return ec;
-    }));
-    fs = f.wait_for(std::chrono::seconds(timeout));
-    if (fs == boost::fibers::future_status::timeout)
-    {
-        LogErrorExt << "dns timeout";
-        return false;
-    }
-    ec = f.get();
+    rr = resolver.async_resolve(host, port, boost::fibers::asio::yield[ec]);
     if (ec)
     {
         LogErrorExt << ec.message();
@@ -491,13 +474,9 @@ bool HttpCache::resolve(const string &host, const string &port, int timeout, Res
 
 bool HttpCache::connect(tcp_stream &stream, const ResolverResult &rr, int timeout) noexcept
 {
-    boost::fibers::future<BSError> f;
     BSError ec;
     stream.expires_after(std::chrono::seconds(timeout));
-    f = stream.async_connect(*rr.begin(), boost::asio::fibers::use_future([](const BSError &ec) {
-        return ec;
-    }));
-    ec = f.get();
+    stream.async_connect(*rr.begin(), boost::fibers::asio::yield[ec]);
     if (ec)
     {
         LogErrorExt << ec.message();
@@ -548,14 +527,10 @@ StrResponse MultiClientHttp::h1_req(const StrRequest &req, const HttpReqArgument
         return std::move(res);
     }
     tcp_stream &stream = conn_ptr->stream;
-    boost::fibers::future<BSError> f;
     BSError ec;
     stream.expires_after(std::chrono::seconds(args.req_timeout));
     //发送请求
-    f = http::async_write(stream, req, boost::asio::fibers::use_future([](const BSError &ec, size_t) {
-        return ec;
-    }));
-    ec = f.get();
+    http::async_write(stream, req, boost::fibers::asio::yield[ec]);
     if (ec)
     {
         LogErrorExt << ec.message();
@@ -573,10 +548,7 @@ StrResponse MultiClientHttp::h1_req(const StrRequest &req, const HttpReqArgument
     }
     //返回响应
     boost::beast::flat_buffer b;
-    f = http::async_read(stream, b, res, boost::asio::fibers::use_future([](const BSError &ec, size_t) {
-        return ec;
-    }));
-    ec = f.get();
+    http::async_read(stream, b, res, boost::fibers::asio::yield[ec]);
     if (ec)
     {
         LogErrorExt << ec.message();
@@ -616,14 +588,10 @@ StrResponse MultiClientHttp::h1_req(const StrRequest &req, const HttpsReqArgumen
         return std::move(res);
     }
     ssl::stream<tcp_stream> &stream = conn_ptr->stream;
-    boost::fibers::future<BSError> f;
     BSError ec;
     stream.next_layer().expires_after(std::chrono::seconds(args.req_timeout));
     //发送请求
-    f = http::async_write(stream, req, boost::asio::fibers::use_future([](const BSError &ec, size_t) {
-        return ec;
-    }));
-    ec = f.get();
+    http::async_write(stream, req, boost::fibers::asio::yield[ec]);
     if (ec)
     {
         LogErrorExt << ec.message();
@@ -640,10 +608,7 @@ StrResponse MultiClientHttp::h1_req(const StrRequest &req, const HttpsReqArgumen
     }
     //返回响应
     boost::beast::flat_buffer b;
-    f = http::async_read(stream, b, res, boost::asio::fibers::use_future([](const BSError &ec, size_t) {
-        return ec;
-    }));
-    ec = f.get();
+    http::async_read(stream, b, res, boost::fibers::asio::yield[ec]);
     if (ec)
     {
         LogErrorExt << ec.message();
@@ -660,10 +625,7 @@ StrResponse MultiClientHttp::h1_req(const StrRequest &req, const HttpsReqArgumen
     }
     if (res.need_eof())
     {
-        f = stream.async_shutdown(boost::asio::fibers::use_future([](boost::system::error_code ec) {
-                                      return ec;
-                                  }));
-        ec = f.get();
+        stream.async_shutdown(boost::fibers::asio::yield[ec]);
         if (ec == boost::asio::error::eof)
         {
             // Rationale:

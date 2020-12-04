@@ -5,10 +5,10 @@
 #include <string>
 #include <mutex>
 #include <atomic>
-#include "json.hpp"
+#include <boost/json.hpp>
 using std::cout;
 using std::endl;
-using nlohmann::json;
+namespace json = boost::json;
 
 string g_host = "127.0.0.1";
 string g_port = "28080";
@@ -65,7 +65,7 @@ int main(int argc, char** argv)
 
     init_logging("./test_client.log", boost::log::trivial::debug);
 
-    boost::fibers::use_scheduling_algorithm<boost::fibers::algo::round_robin>();
+    boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(1, true);
     MultiClientHttp::init();
 
     while(1)

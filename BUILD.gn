@@ -7,6 +7,7 @@ config("myconfig") {
         "./http",
         "./common",
         "./common/fiber",
+        "./db",
         "./third_party/include",
     ]
    
@@ -31,7 +32,7 @@ executable("http_test_client") {
         "./examples/http/client_main.cpp",
     ]
 
-    libs = ["boost_log","boost_fiber", "boost_filesystem", "boost_context", "boost_log_setup", "boost_thread", "boost_date_time"]
+    libs = ["boost_log","boost_fiber", "boost_filesystem", "boost_context", "boost_log_setup", "boost_thread", "boost_date_time", "boost_json"]
     libs += ["ssl", "pthread", "crypto"]
 }
 
@@ -41,10 +42,11 @@ executable("http_test_server") {
     sources = [
         "./common/logger.cpp",
         "./http/http_api_server.cpp",
+        "./db/json2sql.cpp",
         "./examples/http/server_main.cpp",
     ]
 
-    libs = ["boost_log","boost_fiber", "boost_filesystem", "boost_context", "boost_log_setup", "boost_thread", "boost_date_time", "boost_regex"]
+    libs = ["boost_log","boost_fiber", "boost_filesystem", "boost_context", "boost_log_setup", "boost_thread", "boost_date_time", "boost_regex", "boost_json"]
     libs += ["ssl", "pthread", "crypto"]
 }
 
