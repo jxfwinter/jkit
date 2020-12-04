@@ -21,7 +21,7 @@ public:
 int main()
 {
     FiberFrameContext& frame_cxt = FiberFrameContext::instance();
-    frame_cxt.run_thread_count = 3;
+    frame_cxt.run_thread_count = 2;
     frame_cxt.init();
 
     init_logging("./restful_server.log", boost::log::trivial::debug);

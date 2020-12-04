@@ -65,7 +65,7 @@ int main(int argc, char** argv)
 
     init_logging("./test_client.log", boost::log::trivial::debug);
 
-    boost::fibers::use_scheduling_algorithm<boost::fibers::algo::work_stealing>(1, true);
+    boost::fibers::use_scheduling_algorithm<boost::fibers::algo::round_robin>();
     MultiClientHttp::init();
 
     while(1)
