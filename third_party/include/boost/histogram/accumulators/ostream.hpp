@@ -18,7 +18,7 @@
   The text representation is not guaranteed to be stable between versions of
   Boost.Histogram. This header is only included by
   [boost/histogram/ostream.hpp](histogram/reference.html#header.boost.histogram.ostream_hpp).
-  To you use your own, include your own implementation instead of this header and do not
+  To use your own, include your own implementation instead of this header and do not
   include
   [boost/histogram/ostream.hpp](histogram/reference.html#header.boost.histogram.ostream_hpp).
  */
@@ -35,15 +35,16 @@ std::basic_ostream<CharT, Traits>& handle_nonzero_width(
     std::basic_ostream<CharT, Traits>& os, const T& x) {
   const auto w = os.width();
   os.width(0);
-  counting_streambuf<CharT, Traits> cb;
-  const auto saved = os.rdbuf(&cb);
-  os << x;
-  os.rdbuf(saved);
+  std::streamsize count = 0;
+  {
+    auto g = make_count_guard(os, count);
+    os << x;
+  }
   if (os.flags() & std::ios::left) {
     os << x;
-    for (auto i = cb.count; i < w; ++i) os << os.fill();
+    for (auto i = count; i < w; ++i) os << os.fill();
   } else {
-    for (auto i = cb.count; i < w; ++i) os << os.fill();
+    for (auto i = count; i < w; ++i) os << os.fill();
     os << x;
   }
   return os;
@@ -52,32 +53,39 @@ std::basic_ostream<CharT, Traits>& handle_nonzero_width(
 } // namespace detail
 
 namespace accumulators {
-template <class CharT, class Traits, class W>
+
+template <class CharT, class Traits, class U>
 std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>& os,
-                                              const sum<W>& x) {
+                                              const count<U>& x) {
+  return os << x.value();
+}
+
+template <class CharT, class Traits, class U>
+std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>& os,
+                                              const sum<U>& x) {
   if (os.width() == 0) return os << "sum(" << x.large() << " + " << x.small() << ")";
   return detail::handle_nonzero_width(os, x);
 }
 
-template <class CharT, class Traits, class W>
+template <class CharT, class Traits, class U>
 std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>& os,
-                                              const weighted_sum<W>& x) {
+                                              const weighted_sum<U>& x) {
   if (os.width() == 0)
     return os << "weighted_sum(" << x.value() << ", " << x.variance() << ")";
   return detail::handle_nonzero_width(os, x);
 }
 
-template <class CharT, class Traits, class W>
+template <class CharT, class Traits, class U>
 std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>& os,
-                                              const mean<W>& x) {
+                                              const mean<U>& x) {
   if (os.width() == 0)
     return os << "mean(" << x.count() << ", " << x.value() << ", " << x.variance() << ")";
   return detail::handle_nonzero_width(os, x);
 }
 
-template <class CharT, class Traits, class W>
+template <class CharT, class Traits, class U>
 std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>& os,
-                                              const weighted_mean<W>& x) {
+                                              const weighted_mean<U>& x) {
   if (os.width() == 0)
     return os << "weighted_mean(" << x.sum_of_weights() << ", " << x.value() << ", "
               << x.variance() << ")";

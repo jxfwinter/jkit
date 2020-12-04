@@ -374,13 +374,13 @@ struct run_detect_ssl_op
     void operator()(
         DetectHandler&& h,
         AsyncReadStream* s, // references are passed as pointers
-        DynamicBuffer& b)
+        DynamicBuffer* b)
     {
         detect_ssl_op<
             typename std::decay<DetectHandler>::type,
             AsyncReadStream,
             DynamicBuffer>(
-                std::forward<DetectHandler>(h), *s, b);
+                std::forward<DetectHandler>(h), *s, *b);
     }
 };
 
@@ -439,7 +439,7 @@ async_detect_ssl(
             detail::run_detect_ssl_op{},
             token,
             &stream, // pass the reference by pointer
-            buffer);
+            &buffer);
 }
 
 //]
@@ -591,8 +591,19 @@ operator()(error_code ec, std::size_t bytes_transferred, bool cont)
             // by the move, are first moved to the stack before calling the
             // initiating function.
 
-            yield stream_.async_read_some(buffer_.prepare(
-                read_size(buffer_, 1536)), std::move(*this));
+            yield
+            {
+                // This macro facilitates asynchrnous handler tracking and
+                // debugging when the preprocessor macro
+                // BOOST_ASIO_CUSTOM_HANDLER_TRACKING is defined.
+
+                BOOST_ASIO_HANDLER_LOCATION((
+                    __FILE__, __LINE__,
+                    "async_detect_ssl"));
+
+                stream_.async_read_some(buffer_.prepare(
+                    read_size(buffer_, 1536)), std::move(*this));
+            }
 
             // Commit what we read into the buffer's input area.
             buffer_.commit(bytes_transferred);
@@ -626,7 +637,14 @@ operator()(error_code ec, std::size_t bytes_transferred, bool cont)
             // used in the call to async_read_some above, to avoid
             // instantiating another version of the function template.
 
-            yield stream_.async_read_some(buffer_.prepare(0), std::move(*this));
+            yield
+            {
+                BOOST_ASIO_HANDLER_LOCATION((
+                    __FILE__, __LINE__,
+                    "async_detect_ssl"));
+
+                stream_.async_read_some(buffer_.prepare(0), std::move(*this));
+            }
 
             // Restore the saved error code
             ec = ec_;

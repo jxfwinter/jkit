@@ -60,7 +60,6 @@ constexpr void static_warning(const T){
    //using x = static_test<T>;
    const static_test<T> x;
 }
-
 #endif
 
 /*
@@ -124,7 +123,7 @@ namespace ilog2_detail {
     constexpr static unsigned int ilog2(const boost::uint_t<8>::exact & t){
         #define LT(n) n, n, n, n, n, n, n, n, n, n, n, n, n, n, n, n
         const char LogTable256[256] = {
-            static_cast<const char>(-1), 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
+            static_cast<char>(-1), 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3,
             LT(4), LT(5), LT(5), LT(6), LT(6), LT(6), LT(6),
             LT(7), LT(7), LT(7), LT(7), LT(7), LT(7), LT(7), LT(7)
         };
@@ -237,7 +236,7 @@ using unsigned_stored_type = typename boost::uint_t<
 // b) is not guarenteed to handle non-assignable types
 template<typename T>
 constexpr std::pair<T, T>
-minmax(const std::initializer_list<T> l){
+minmax(const std::initializer_list<T> & l){
     assert(l.size() > 0);
     const T * minimum = l.begin();
     const T * maximum = l.begin();

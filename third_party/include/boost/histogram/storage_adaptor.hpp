@@ -239,7 +239,7 @@ struct map_impl : T {
       return !operator==(rhs);
     }
 
-    template <typename CharT, typename Traits>
+    template <class CharT, class Traits>
     friend std::basic_ostream<CharT, Traits>& operator<<(
         std::basic_ostream<CharT, Traits>& os, reference x) {
       os << static_cast<const_reference>(x);
@@ -247,8 +247,8 @@ struct map_impl : T {
     }
 
     template <class... Ts>
-    decltype(auto) operator()(Ts&&... args) {
-      return map->operator[](idx)(std::forward<Ts>(args)...);
+    auto operator()(const Ts&... args) -> decltype(std::declval<value_type>()(args...)) {
+      return (*map)[idx](args...);
     }
 
     map_impl* map;
@@ -259,7 +259,8 @@ struct map_impl : T {
   struct iterator_t
       : iterator_adaptor<iterator_t<Value, Reference, MapPtr>, std::size_t, Reference> {
     iterator_t() = default;
-    template <class V, class R, class M, class = requires_convertible<M, MapPtr>>
+    template <class V, class R, class M,
+              class = std::enable_if_t<std::is_convertible<M, MapPtr>::value>>
     iterator_t(const iterator_t<V, R, M>& it) noexcept : iterator_t(it.map_, it.base()) {}
     iterator_t(MapPtr m, std::size_t i) noexcept
         : iterator_t::iterator_adaptor_(i), map_(m) {}

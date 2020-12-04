@@ -8,7 +8,6 @@
 #define BOOST_HISTOGRAM_AXIS_VARIABLE_HPP
 
 #include <algorithm>
-#include <boost/assert.hpp>
 #include <boost/core/nvp.hpp>
 #include <boost/histogram/axis/interval_view.hpp>
 #include <boost/histogram/axis/iterator.hpp>
@@ -17,9 +16,11 @@
 #include <boost/histogram/detail/convert_integer.hpp>
 #include <boost/histogram/detail/detect.hpp>
 #include <boost/histogram/detail/limits.hpp>
+#include <boost/histogram/detail/relaxed_equal.hpp>
 #include <boost/histogram/detail/replace_type.hpp>
 #include <boost/histogram/fwd.hpp>
 #include <boost/throw_exception.hpp>
+#include <cassert>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -46,9 +47,11 @@ namespace axis {
  */
 template <class Value, class MetaData, class Options, class Allocator>
 class variable : public iterator_mixin<variable<Value, MetaData, Options, Allocator>>,
-                 public metadata_base<MetaData> {
+                 public metadata_base_t<MetaData> {
+  // these must be private, so that they are not automatically inherited
   using value_type = Value;
-  using metadata_type = typename metadata_base<MetaData>::metadata_type;
+  using metadata_base = metadata_base_t<MetaData>;
+  using metadata_type = typename metadata_base::metadata_type;
   using options_type =
       detail::replace_default<Options, decltype(option::underflow | option::overflow)>;
   using allocator_type = Allocator;
@@ -77,16 +80,16 @@ public:
    */
   template <class It, class = detail::requires_iterator<It>>
   variable(It begin, It end, metadata_type meta = {}, allocator_type alloc = {})
-      : metadata_base<MetaData>(std::move(meta)), vec_(std::move(alloc)) {
+      : metadata_base(std::move(meta)), vec_(std::move(alloc)) {
     if (std::distance(begin, end) < 2)
       BOOST_THROW_EXCEPTION(std::invalid_argument("bins > 0 required"));
 
     vec_.reserve(std::distance(begin, end));
     vec_.emplace_back(*begin++);
     bool strictly_ascending = true;
-    while (begin != end) {
-      if (*begin <= vec_.back()) strictly_ascending = false;
-      vec_.emplace_back(*begin++);
+    for (; begin != end; ++begin) {
+      strictly_ascending &= vec_.back() < *begin;
+      vec_.emplace_back(*begin);
     }
     if (!strictly_ascending)
       BOOST_THROW_EXCEPTION(
@@ -117,8 +120,8 @@ public:
 
   /// Constructor used by algorithm::reduce to shrink and rebin (not for users).
   variable(const variable& src, index_type begin, index_type end, unsigned merge)
-      : metadata_base<MetaData>(src), vec_(src.get_allocator()) {
-    BOOST_ASSERT((end - begin) % merge == 0);
+      : metadata_base(src), vec_(src.get_allocator()) {
+    assert((end - begin) % merge == 0);
     if (options_type::test(option::circular) && !(begin == 0 && end == src.size()))
       BOOST_THROW_EXCEPTION(std::invalid_argument("cannot shrink circular axis"));
     vec_.reserve((end - begin) / merge);
@@ -137,7 +140,7 @@ public:
                                    vec_.begin() - 1);
   }
 
-  auto update(value_type x) noexcept {
+  std::pair<index_type, index_type> update(value_type x) noexcept {
     const auto i = index(x);
     if (std::isfinite(x)) {
       if (0 <= i) {
@@ -146,14 +149,14 @@ public:
         x = std::nextafter(x, (std::numeric_limits<value_type>::max)());
         x = (std::max)(x, vec_.back() + d);
         vec_.push_back(x);
-        return std::make_pair(i, -1);
+        return {i, -1};
       }
       const auto d = value(0.5) - value(0);
       x = (std::min)(x, value(0) - d);
       vec_.insert(vec_.begin(), x);
-      return std::make_pair(0, -i);
+      return {0, -i};
     }
-    return std::make_pair(x < 0 ? -1 : size(), 0);
+    return {x < 0 ? -1 : size(), 0};
   }
 
   /// Return value for fractional index argument.
@@ -172,7 +175,8 @@ public:
     if (i > size()) return detail::highest<value_type>();
     const auto k = static_cast<index_type>(i); // precond: i >= 0
     const real_index_type z = i - k;
-    return (1.0 - z) * vec_[k] + z * vec_[k + 1];
+    // check z == 0 needed to avoid returning nan when vec_[k + 1] is infinity
+    return (1.0 - z) * vec_[k] + (z == 0 ? 0 : z * vec_[k + 1]);
   }
 
   /// Return bin for index argument.
@@ -189,7 +193,7 @@ public:
     const auto& a = vec_;
     const auto& b = o.vec_;
     return std::equal(a.begin(), a.end(), b.begin(), b.end()) &&
-           metadata_base<MetaData>::operator==(o);
+           detail::relaxed_equal{}(this->metadata(), o.metadata());
   }
 
   template <class V, class M, class O, class A>

@@ -13,6 +13,7 @@
 #include <boost/histogram/axis/option.hpp>
 #include <boost/histogram/detail/convert_integer.hpp>
 #include <boost/histogram/detail/limits.hpp>
+#include <boost/histogram/detail/relaxed_equal.hpp>
 #include <boost/histogram/detail/replace_type.hpp>
 #include <boost/histogram/detail/static_if.hpp>
 #include <boost/histogram/fwd.hpp>
@@ -39,17 +40,17 @@ namespace axis {
  */
 template <class Value, class MetaData, class Options>
 class integer : public iterator_mixin<integer<Value, MetaData, Options>>,
-                public metadata_base<MetaData> {
-  static_assert(std::is_integral<Value>::value || std::is_floating_point<Value>::value,
-                "integer axis requires floating point or integral type");
-
+                public metadata_base_t<MetaData> {
+  // these must be private, so that they are not automatically inherited
   using value_type = Value;
-  using local_index_type = std::conditional_t<std::is_integral<value_type>::value,
-                                              index_type, real_index_type>;
-
-  using metadata_type = typename metadata_base<MetaData>::metadata_type;
+  using metadata_base = metadata_base_t<MetaData>;
+  using metadata_type = typename metadata_base::metadata_type;
   using options_type =
       detail::replace_default<Options, decltype(option::underflow | option::overflow)>;
+
+  static_assert(std::is_integral<value_type>::value ||
+                    std::is_floating_point<value_type>::value,
+                "integer axis requires floating point or integral type");
 
   static_assert(!options_type::test(option::circular | option::growth) ||
                     (options_type::test(option::circular) ^
@@ -64,6 +65,9 @@ class integer : public iterator_mixin<integer<Value, MetaData, Options>>,
                 "circular or growing integer axis with integral type "
                 "cannot have entries in underflow or overflow bins");
 
+  using local_index_type = std::conditional_t<std::is_integral<value_type>::value,
+                                              index_type, real_index_type>;
+
 public:
   constexpr integer() = default;
 
@@ -74,7 +78,7 @@ public:
    * \param meta     description of the axis.
    */
   integer(value_type start, value_type stop, metadata_type meta = {})
-      : metadata_base<MetaData>(std::move(meta))
+      : metadata_base(std::move(meta))
       , size_(static_cast<index_type>(stop - start))
       , min_(start) {
     if (!(stop >= start))
@@ -92,32 +96,34 @@ public:
 
   /// Return index for value argument.
   index_type index(value_type x) const noexcept {
-    return index_impl(std::is_floating_point<value_type>(), x);
+    return index_impl(options_type::test(axis::option::circular),
+                      std::is_floating_point<value_type>{},
+                      static_cast<double>(x - min_));
   }
 
   /// Returns index and shift (if axis has grown) for the passed argument.
   auto update(value_type x) noexcept {
-    auto impl = [this](long x) {
+    auto impl = [this](long x) -> std::pair<index_type, index_type> {
       const auto i = x - min_;
       if (i >= 0) {
         const auto k = static_cast<axis::index_type>(i);
-        if (k < size()) return std::make_pair(k, 0);
+        if (k < size()) return {k, 0};
         const auto n = k - size() + 1;
         size_ += n;
-        return std::make_pair(k, -n);
+        return {k, -n};
       }
       const auto k = static_cast<axis::index_type>(
           detail::static_if<std::is_floating_point<value_type>>(
               [](auto x) { return std::floor(x); }, [](auto x) { return x; }, i));
       min_ += k;
       size_ -= k;
-      return std::make_pair(0, -k);
+      return {0, -k};
     };
 
     return detail::static_if<std::is_floating_point<value_type>>(
-        [this, impl](auto x) {
+        [this, impl](auto x) -> std::pair<index_type, index_type> {
           if (std::isfinite(x)) return impl(static_cast<long>(std::floor(x)));
-          return std::make_pair(x < 0 ? -1 : this->size(), 0);
+          return {x < 0 ? -1 : this->size(), 0};
         },
         impl, x);
   }
@@ -154,7 +160,8 @@ public:
 
   template <class V, class M, class O>
   bool operator==(const integer<V, M, O>& o) const noexcept {
-    return size() == o.size() && min_ == o.min_ && metadata_base<MetaData>::operator==(o);
+    return size() == o.size() && min_ == o.min_ &&
+           detail::relaxed_equal{}(this->metadata(), o.metadata());
   }
 
   template <class V, class M, class O>
@@ -170,25 +177,22 @@ public:
   }
 
 private:
-  index_type index_impl(std::false_type, int x) const noexcept {
-    const auto z = x - min_;
-    if (options_type::test(option::circular))
-      return static_cast<index_type>(z - std::floor(float(z) / size()) * size());
-    if (z < size()) return z >= 0 ? z : -1;
+  // axis not circular
+  template <class B>
+  index_type index_impl(std::false_type, B, double z) const noexcept {
+    if (z < size()) return z >= 0 ? static_cast<index_type>(z) : -1;
     return size();
   }
 
-  template <typename T>
-  index_type index_impl(std::true_type, T x) const noexcept {
-    // need to handle NaN, cannot simply cast to int and call int-implementation
-    const auto z = x - min_;
-    if (options_type::test(option::circular)) {
-      if (std::isfinite(z))
-        return static_cast<index_type>(std::floor(z) - std::floor(z / size()) * size());
-    } else if (z < size()) {
-      return z >= 0 ? static_cast<index_type>(z) : -1;
-    }
-    return size();
+  // value_type is integer, axis circular
+  index_type index_impl(std::true_type, std::false_type, double z) const noexcept {
+    return static_cast<index_type>(z - std::floor(z / size()) * size());
+  }
+
+  // value_type is floating point, must handle +/-infinite or nan, axis circular
+  index_type index_impl(std::true_type, std::true_type, double z) const noexcept {
+    if (std::isfinite(z)) return index_impl(std::true_type{}, std::false_type{}, z);
+    return z < size() ? -1 : size();
   }
 
   index_type size_{0};

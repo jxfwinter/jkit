@@ -21,29 +21,29 @@ template<
     typename UV
 >
 struct exception_policy {
-    static constexpr void on_arithmetic_error(
+    constexpr static void on_arithmetic_error(
         const safe_numerics_error & e,
         const char * msg
     ){
-        AE(e, msg);
+        AE()(e, msg);
     }
-    static constexpr void on_implementation_defined_behavior(
+    constexpr static void on_implementation_defined_behavior(
         const safe_numerics_error & e,
         const char * msg
     ){
-        IDB(e, msg);
+        IDB()(e, msg);
     }
-    static constexpr void on_undefined_behavior(
+    constexpr static void on_undefined_behavior(
         const safe_numerics_error & e,
         const char * msg
     ){
-        UB(e, msg);
+        UB()(e, msg);
     }
-    static constexpr void on_uninitialized_value(
+    constexpr static void on_uninitialized_value(
         const safe_numerics_error & e,
         const char * msg
     ){
-        UV(e, msg);
+        UV()(e, msg);
     }
 };
 
@@ -52,20 +52,32 @@ struct exception_policy {
 
 // ignore any error and just return.
 struct ignore_exception {
-    constexpr ignore_exception(const safe_numerics_error &, const char * ){}
+    constexpr ignore_exception() = default;
+    constexpr void operator () (
+        const boost::safe_numerics::safe_numerics_error &,
+        const char *
+    ){}
 };
 
 // emit compile time error if this is invoked.
-struct trap_exception {};
+struct trap_exception {
+    constexpr trap_exception() = default;
+    // error will occur on operator call.
+    // hopefully this will display arguments
+};
 
 // If an exceptional condition is detected at runtime throw the exception.
 struct throw_exception {
+    constexpr throw_exception() = default;
     #ifndef BOOST_NO_EXCEPTIONS
-    throw_exception(const safe_numerics_error & e, const char * message){
+    void operator()(
+        const safe_numerics_error & e,
+        const char * message
+    ){
         throw std::system_error(std::error_code(e), message);
     }
     #else
-    trap_exception(const safe_numerics_error & e, const char * message);
+    constexpr trap_exception()(const safe_numerics_error & e, const char * message);
     #endif
 };
 
@@ -105,7 +117,7 @@ make_safe_numerics_action(const safe_numerics_error & e){
 // compile time error dispatcher
 
 // note slightly baroque implementation of a compile time switch statement
-// which instatiates oonly those cases which are actually invoked.  This is
+// which instatiates only those cases which are actually invoked.  This is
 // motivated to implement the "trap" functionality which will generate a syntax
 // error if and only a function which might fail is called.
 

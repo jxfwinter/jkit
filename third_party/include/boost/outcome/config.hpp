@@ -1,5 +1,5 @@
 /* Configure Boost.Outcome with Boost
-(C) 2015-2019 Niall Douglas <http://www.nedproductions.biz/> (7 commits)
+(C) 2015-2020 Niall Douglas <http://www.nedproductions.biz/> (7 commits)
 File Created: August 2015
 
 
@@ -111,10 +111,14 @@ DEALINGS IN THE SOFTWARE.
 #endif
 #ifndef BOOST_OUTCOME_REQUIRES
 #if defined(__cpp_concepts) && (!defined(_MSC_VER) || _MSC_FULL_VER >= 192400000)  // VS 2019 16.3 is broken here
-#define BOOST_OUTCOME_REQUIRES(...) requires __VA_ARGS__
+#define BOOST_OUTCOME_REQUIRES(...) requires(__VA_ARGS__)
 #else
 #define BOOST_OUTCOME_REQUIRES(...)
 #endif
+#endif
+
+#ifndef BOOST_OUTCOME_ENABLE_LEGACY_SUPPORT_FOR
+#define BOOST_OUTCOME_ENABLE_LEGACY_SUPPORT_FOR 210  // the v2.1 Outcome release
 #endif
 
 namespace boost
@@ -283,6 +287,34 @@ namespace detail
     static constexpr bool value = false;
   };
   template <class T, class U> static constexpr bool is_implicitly_constructible = _is_implicitly_constructible<T, U>::value;
+
+  template <class T, class... Args> struct _is_nothrow_constructible
+  {
+    static constexpr bool value = std::is_nothrow_constructible<T, Args...>::value;
+  };
+  template <class T> struct _is_nothrow_constructible<T, void>
+  {
+    static constexpr bool value = false;
+  };
+  template <> struct _is_nothrow_constructible<void, void>
+  {
+    static constexpr bool value = false;
+  };
+  template <class T, class... Args> static constexpr bool is_nothrow_constructible = _is_nothrow_constructible<T, Args...>::value;
+
+  template <class T, class... Args> struct _is_constructible
+  {
+    static constexpr bool value = std::is_constructible<T, Args...>::value;
+  };
+  template <class T> struct _is_constructible<T, void>
+  {
+    static constexpr bool value = false;
+  };
+  template <> struct _is_constructible<void, void>
+  {
+    static constexpr bool value = false;
+  };
+  template <class T, class... Args> static constexpr bool is_constructible = _is_constructible<T, Args...>::value;
 
 #ifndef BOOST_OUTCOME_USE_STD_IS_NOTHROW_SWAPPABLE
 #if defined(_MSC_VER) && _HAS_CXX17

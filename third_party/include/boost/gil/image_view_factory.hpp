@@ -64,7 +64,7 @@ interleaved_view(std::size_t width, std::size_t height,
 /// \ingroup ImageViewConstructors
 /// \brief Constructing image views from raw interleaved pixel data
 template <typename Iterator>
-auto interleaved_view(point<std::size_t> dim, Iterator pixels,
+auto interleaved_view(point<std::ptrdiff_t> dim, Iterator pixels,
                       std::ptrdiff_t rowsize_in_bytes)
     -> typename type_from_x_iterator<Iterator>::view_t
 {
@@ -160,7 +160,7 @@ struct color_converted_view_type : public detail::_color_converted_view_type<Src
                                                                              CC,
                                                                              DstP,
                                                                              typename SrcView::value_type> {
-    GIL_CLASS_REQUIRE(DstP, boost::gil, MutablePixelConcept)//why does it have to be mutable???
+    BOOST_GIL_CLASS_REQUIRE(DstP, boost::gil, MutablePixelConcept)//why does it have to be mutable???
 };
 
 
@@ -405,7 +405,7 @@ namespace detail {
 template <typename View>
 struct nth_channel_view_type {
 private:
-    GIL_CLASS_REQUIRE(View, boost::gil, ImageViewConcept)
+    BOOST_GIL_CLASS_REQUIRE(View, boost::gil, ImageViewConcept)
     using VB = detail::__nth_channel_view<View,view_is_basic<View>::value>;
 public:
     using type = typename VB::type;
@@ -540,7 +540,7 @@ namespace detail {
 template <int K, typename View>
 struct kth_channel_view_type {
 private:
-    GIL_CLASS_REQUIRE(View, boost::gil, ImageViewConcept)
+    BOOST_GIL_CLASS_REQUIRE(View, boost::gil, ImageViewConcept)
     using VB = detail::__kth_channel_view<K,View,view_is_basic<View>::value>;
 public:
     using type = typename VB::type;
