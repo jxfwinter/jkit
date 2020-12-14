@@ -4,12 +4,11 @@
 常用库
 
 #### 版本
-1.  boost 1.72
+1.  boost 1.75
 2.  nghttp2 1.40
 3.  jwt
 4.  backtrace
-5.  nghttp2 1.40
-6.  nlohmann/json 3.7.3
+5.  soci 4.0.1
 
 
 #### 编译说明
