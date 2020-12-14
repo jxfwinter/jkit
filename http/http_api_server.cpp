@@ -204,8 +204,7 @@ void HttpApiServer::accept()
                 {
                     m_session_cnd.notify_one();
                 }
-            })
-                    .detach();
+            }).detach();
 
             std::lock_guard<boost::fibers::mutex> lk(m_session_mutex);
             ++m_session_number;
