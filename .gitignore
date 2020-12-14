@@ -1,6 +1,7 @@
 /.vscode
 /bin
 /lib
+/build
 /lib_old
 /out
 *.creator.user

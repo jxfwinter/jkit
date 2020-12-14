@@ -1,5 +1,0 @@
-buildconfig = "//build/config/BUILDCONFIG.gn"
-
-default_args = {
-    has_http2 = true
-}
