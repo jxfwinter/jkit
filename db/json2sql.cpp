@@ -50,7 +50,10 @@ string value_to_sql_str(const json::value &v)
     }
     else if (v.is_string())
     {
-        os << "'" << json::serialize(v) << "'";
+        string tmp = json::serialize(v);
+        tmp[0] = '\'';
+        tmp[tmp.size() - 1] = '\'';
+        os << tmp;
     }
     else if (v.is_array())
     {
